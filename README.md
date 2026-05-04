@@ -1,75 +1,233 @@
-# Vole-PSI
-## No longer maintained, see https://github.com/ladnir/volepsi
+# VOLE-PSI
 
-Vole-PSI implements the protocols described in [VOLE-PSI: Fast OPRF and Circuit-PSI from Vector-OLE](https://eprint.iacr.org/2021/266) and [Blazing Fast PSI from Improved OKVS and Subfield VOLE](misc/blazingFastPSI.pdf). The library implements standard [Private Set Intersection (PSI)](https://en.wikipedia.org/wiki/Private_set_intersection) along with a variant called Circuit PSI where the result is secret shared between the two parties.
+Implementation of the protocols described in
+[VOLE-PSI: Fast OPRF and Circuit-PSI from Vector-OLE](https://eprint.iacr.org/2021/266)
+and [Blazing Fast PSI from Improved OKVS and Subfield VOLE](misc/blazingFastPSI.pdf).
 
-The library is cross platform (win,linux,mac) and depends on [libOTe](https://github.com/osu-crypto/libOTe), [sparsehash](https://github.com/sparsehash/sparsehash), [Coproto](https://github.com/Visa-Research/coproto).
+The library implements standard [Private Set Intersection (PSI)](https://en.wikipedia.org/wiki/Private_set_intersection)
+and a Circuit-PSI variant where the result is secret-shared between the two parties.
 
-### Build
+> **Note:** The upstream repo is at https://github.com/ladnir/volepsi.
+> This fork adds TLS support, convenience scripts, and a simplified runner interface.
 
-The library can be cloned and built with networking support as
+---
+
+## Quick Start
+
+### 1. Build
+
+```bash
+python3 build.py -DVOLE_PSI_ENABLE_OPENSSL=true -DVOLE_PSI_ENABLE_BOOST=true
 ```
-git clone https://github.com/Visa-Research/volepsi.git
-cd volepsi
-python3 build.py -DVOLE_PSI_ENABLE_BOOST=ON
+
+This produces the `frontend` binary at `out/build/linux/frontend/frontend`.
+
+### 2. Bootstrap TLS certificates (one-time)
+
+Required for any TLS mode. Generates a local CA, sender cert, and receiver cert under `certs/`.
+
+```bash
+bash bootrstrap_certs.sh
 ```
-If TCP/IP support is not required, then a minimal version of the library can be build by calling `python3 build.py`. See below and the cmake/python output for additional options.
-The user can manually call cmake as well.
 
-The output library `volePSI` and executable `frontend` will be written to `out/build/<platform>/`. The `frontend` can perform PSI based on files as input sets and communicate via sockets. See the output of `frontend` for details. There is also two example on how to perform [networking](https://github.com/Visa-Research/volepsi/blob/main/frontend/networkSocketExample.h#L7) or [manually](https://github.com/Visa-Research/volepsi/blob/main/frontend/messagePassingExample.h#L93) get & send the protocol messages.
+### 3. Generate input sets
 
-##### Compile Options
-Options can be set as `-D NAME=VALUE`. For example, `-D VOLE_PSI_NO_SYSTEM_PATH=true`. See the output of the build for default/current value. Options include :
- * `VOLE_PSI_NO_SYSTEM_PATH`, values: `true,false`.  When looking for dependencies, do not look in the system install. Instead use `CMAKE_PREFIX_PATH` and the internal dependency management.  
-* `CMAKE_BUILD_TYPE`, values: `Debug,Release,RelWithDebInfo`. The build type. 
-* `FETCH_AUTO`, values: `true,false`. If true, dependencies will first be searched for and if not found then automatically downloaded.
-* `FETCH_SPARSEHASH`, values: `true,false`. If true, the dependency sparsehash will always be downloaded. 
-* `FETCH_LIBOTE`, values: `true,false`. If true, the dependency libOTe will always be downloaded. 
-* `FETCH_LIBDIVIDE`, values: `true,false`. If true, the dependency libdivide will always be downloaded. 
-* `VOLE_PSI_ENABLE_SSE`, values: `true,false`. If true, the library will be built with SSE intrinsics support. 
-* `VOLE_PSI_ENABLE_PIC`, values: `true,false`. If true, the library will be built `-fPIC` for shared library support. 
-* `VOLE_PSI_ENABLE_ASAN`, values: `true,false`. If true, the library will be built ASAN enabled. 
-* `VOLE_PSI_ENABLE_GMW`, values: `true,false`. If true, the GMW protocol will be compiled. Only used for Circuit PSI.
-* `VOLE_PSI_ENABLE_CPSI`, values: `true,false`. If true,  the circuit PSI protocol will be compiled. 
-* `VOLE_PSI_ENABLE_OPPRF`, values: `true,false`.  If true, the OPPRF protocol will be compiled. Only used for Circuit PSI.
-* `VOLE_PSI_ENABLE_BOOST`, values: `true,false`. If true, the library will be built with boost networking support. This support is managed by libOTe. 
-* `VOLE_PSI_ENABLE_OPENSSL`, values: `true,false`. If true,the library will be built with OpenSSL networking support. This support is managed by libOTe. If enabled, it is the responsibility of the user to install openssl to the system or to a location contained in `CMAKE_PREFIX_PATH`.
-* `VOLE_PSI_ENABLE_BITPOLYMUL`, values: `true,false`. If true, the library will be built with quasicyclic codes for VOLE which are more secure than the alternative. This support is managed by libOTe. 
-* `VOLE_PSI_ENABLE_SODIUM`, values: `true,false`. If true, the library will be built libSodium for doing elliptic curve operations. This or relic must be enabled. This support is managed by libOTe. 
-* `VOLE_PSI_SODIUM_MONTGOMERY`, values: `true,false`. If true, the library will use a non-standard version of sodium that enables slightly better efficiency. 
-* `VOLE_PSI_ENABLE_RELIC`, values: `true,false`. If true, the library will be built relic for doing elliptic curve operations. This or sodium must be enabled. This support is managed by libOTe. 
+```bash
+python3 generate_psi_inputs.py -n 20 -i 1000
+```
 
+Creates `psi_inputs/sender.csv` and `psi_inputs/receiver.csv` with sets of size 2²⁰ = 1,048,576,
+sharing 1,000 common elements.
+
+---
+
+## Running PSI — three modes
+
+All modes go through `psi.py`.
+
+### Local benchmark — no TLS
+
+Both parties run on localhost. Useful for verifying the build and measuring raw performance.
+
+```bash
+python3 psi.py bench -n 20 -i 1000
+```
+
+### Local benchmark — with TLS
+
+Same as above but the connection is encrypted. Tests the full TLS stack locally.
+
+```bash
+python3 psi.py bench -n 20 -i 1000 --tls
+```
+
+### Real two-party execution — with TLS
+
+Run `receiver` first (it listens), then `sender` (it connects).
+Each command runs on its own machine; set `--ip` on the sender to point at the receiver's host.
+
+**On the receiver machine:**
+```bash
+python3 psi.py receiver --in psi_inputs/receiver.csv --tls
+```
+
+**On the sender machine:**
+```bash
+python3 psi.py sender --in psi_inputs/sender.csv --tls --ip <receiver-host>:1212
+```
+
+The intersection is written to `<receiver-input>.out` by default. Override with `--out`.
+
+---
+
+## Scripts reference
+
+### `psi.py` — unified runner
+
+```
+usage: python3 psi.py <command> [options]
+
+Commands:
+  bench       local benchmark (spawns both parties on localhost)
+  receiver    run as PSI receiver — listens for the sender to connect
+  sender      run as PSI sender  — connects to the receiver
+
+bench options:
+  -n N                log2 set size (e.g. 20 → 2^20 items per party)
+  -i / --intersection intersection size
+  --tls               enable TLS  [requires certs/]
+  --ip HOST:PORT      default: localhost:1212
+  --outdir DIR        where to write generated CSVs  (default: psi_inputs/)
+  --out FILE          intersection output file
+
+receiver / sender options:
+  --in FILE           input CSV  (required)
+  --tls               enable TLS  [requires certs/]
+  --ip HOST:PORT      listen/connect address  (default: localhost:1212)
+  --out FILE          intersection output file  (receiver only)
+  -v / --verbose      verbose output
+```
+
+### `generate_psi_inputs.py` — synthetic input generator
+
+Generates two CSV files (`sender.csv`, `receiver.csv`) with a controlled intersection.
+
+```
+python3 generate_psi_inputs.py -n <log2_size> -i <intersection_size> [options]
+
+Required:
+  -n N              log2 of the set size for both parties
+  -i / --intersection N   number of shared elements
+
+Optional:
+  -ns N             log2 sender size (overrides -n)
+  -nr N             log2 receiver size (overrides -n)
+  -o / --outdir DIR output directory  (default: psi_inputs/)
+  --seed N          RNG seed for reproducibility  (default: 42)
+```
+
+### `run_psi_bench.py` — sweep benchmarker
+
+Sweeps over a range of set sizes and intersection values, runs multiple repetitions,
+and produces timing plots in `psi_bench_plots/`.
+
+```
+python3 run_psi_bench.py \
+  --n-min 10 --n-max 20 \
+  --intersections 0 100 1000 \
+  --rep 3
+```
+
+Key options: `--frontend`, `--outdir`, `--ca`, `--sender-cert`, `--sender-key`,
+`--receiver-cert`, `--receiver-key`, `--timeout`.
+
+Requires `pandas` and `matplotlib`:
+
+```bash
+pip install pandas matplotlib
+```
+
+### `bootrstrap_certs.sh` — TLS certificate generator
+
+Creates a self-signed CA and per-party certificates under `certs/`.
+Only needs to be run once; re-run if the existing certs expire (365-day lifetime).
+
+```bash
+bash bootrstrap_certs.sh
+```
+
+---
+
+## Build details
+
+### Compile options
+
+Pass options as `-D NAME=VALUE`. Example:
+
+```bash
+python3 build.py -DVOLE_PSI_ENABLE_BOOST=true -DVOLE_PSI_ENABLE_OPENSSL=true
+```
+
+| Option | Values | Description |
+|---|---|---|
+| `CMAKE_BUILD_TYPE` | `Debug`, `Release`, `RelWithDebInfo` | Build type |
+| `FETCH_AUTO` | `true`, `false` | Auto-download missing dependencies |
+| `FETCH_SPARSEHASH` | `true`, `false` | Always download sparsehash |
+| `FETCH_LIBOTE` | `true`, `false` | Always download libOTe |
+| `FETCH_LIBDIVIDE` | `true`, `false` | Always download libdivide |
+| `VOLE_PSI_NO_SYSTEM_PATH` | `true`, `false` | Skip system paths when finding deps |
+| `VOLE_PSI_ENABLE_BOOST` | `true`, `false` | TCP/IP networking via Boost.Asio |
+| `VOLE_PSI_ENABLE_OPENSSL` | `true`, `false` | TLS networking via OpenSSL |
+| `VOLE_PSI_ENABLE_SODIUM` | `true`, `false` | Elliptic curve ops via libSodium |
+| `VOLE_PSI_ENABLE_RELIC` | `true`, `false` | Elliptic curve ops via Relic (alternative to sodium) |
+| `VOLE_PSI_ENABLE_SSE` | `true`, `false` | SSE intrinsics |
+| `VOLE_PSI_ENABLE_PIC` | `true`, `false` | Position-independent code (`-fPIC`) |
+| `VOLE_PSI_ENABLE_ASAN` | `true`, `false` | AddressSanitizer |
+| `VOLE_PSI_ENABLE_GMW` | `true`, `false` | GMW protocol (Circuit PSI) |
+| `VOLE_PSI_ENABLE_CPSI` | `true`, `false` | Circuit PSI protocol |
+| `VOLE_PSI_ENABLE_OPPRF` | `true`, `false` | OPPRF protocol (Circuit PSI) |
+| `VOLE_PSI_ENABLE_BITPOLYMUL` | `true`, `false` | Quasicyclic codes for VOLE (more secure) |
+| `VOLE_PSI_SODIUM_MONTGOMERY` | `true`, `false` | Non-standard sodium variant for better efficiency |
 
 ### Installing
 
-The library and any fetched dependencies can be installed. 
+```bash
+python3 build.py --install                     # installs to /usr/local
+python3 build.py --install=~/my/install/path   # custom prefix
 ```
-python3 build.py --install
-```
-or 
-```
-python3 build.py --install=install/prefix/path
-```
-if a custom install prefix is perfected. Install can also be performed via cmake.
 
-### Linking
+### Linking via CMake
 
-libOTe can be linked via cmake as
-```
+```cmake
 find_package(volepsi REQUIRED)
 target_link_libraries(myProject visa::volepsi)
 ```
-To ensure that cmake can find volepsi, you can either install volepsi or build it locally and set `-D CMAKE_PREFIX_PATH=path/to/volepsi` or provide its location as a cmake `HINTS`, i.e. `find_package(volepsi HINTS path/to/volepsi)`.
 
-To link a non-cmake project you will need to link volepsi, libOTe,coproto, macoro, (sodium or relic), optionally boost and openss if enabled. These will be installed to the install location and staged to `./out/install/<platform>`. 
+Point CMake at the build output if not installed:
 
-
-### Dependency Management
-
-By default the dependencies are fetched automatically. This can be turned off by using cmake directly or adding `-D FETCH_AUTO=OFF`. For other options see the cmake output or that of `python build.py --help`.
-
-If the dependency is installed to the system, then cmake should automatically find it if `VOLE_PSI_NO_SYSTEM_PATH` is `false`. If they are installed to a specific location, then you call tell cmake about them as 
-```
-python3 build.py -D CMAKE_PREFIX_PATH=install/prefix/path
+```bash
+cmake -DCMAKE_PREFIX_PATH=path/to/volepsi ...
 ```
 
+### Dependency management
+
+Dependencies are fetched automatically by default. To disable:
+
+```bash
+python3 build.py -DFETCH_AUTO=OFF
+```
+
+If a dependency is installed to a custom path:
+
+```bash
+python3 build.py -DCMAKE_PREFIX_PATH=/path/to/deps
+```
+
+---
+
+## Library
+
+Cross-platform (Linux, macOS, Windows). Depends on:
+- [libOTe](https://github.com/osu-crypto/libOTe)
+- [sparsehash](https://github.com/sparsehash/sparsehash)
+- [Coproto](https://github.com/Visa-Research/coproto)

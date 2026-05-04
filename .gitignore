@@ -5,3 +5,8 @@ thirdparty/
 tests/cmakeTests/
 CMakeSettings.json
 ~/
+
+.venv
+certs
+psi_bench_plots
+psi_inputs
