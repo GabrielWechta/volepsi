@@ -12,6 +12,28 @@ and a Circuit-PSI variant where the result is secret-shared between the two part
 
 ---
 
+## Prerequisites
+
+### System packages
+
+The build and runner scripts require a C++ toolchain, CMake, OpenSSL (with headers), and Python 3:
+
+```bash
+# Debian / Ubuntu
+sudo apt update
+sudo apt install -y build-essential cmake git python3 python3-pip libssl-dev libboost-all-dev
+```
+
+### Firewall (two-machine runs)
+
+The receiver listens on TCP port `1212` by default. On cloud machines this port is
+typically closed; open it on the **receiver** machine:
+
+```bash
+# firewalld
+sudo firewall-cmd --add-port=1212/tcp --permanent && sudo firewall-cmd --reload
+```
+
 ## Quick Start
 
 ### 1. Build
@@ -24,11 +46,28 @@ This produces the `frontend` binary at `out/build/linux/frontend/frontend`.
 
 ### 2. Bootstrap TLS certificates (one-time)
 
-Required for any TLS mode. Generates a local CA, sender cert, and receiver cert under `certs/`.
+Required for any TLS mode. The bootstrap script has two modes depending on where the
+parties run:
+
+**Local mode** — both parties on this machine (e.g., for `bench`):
 
 ```bash
-bash bootrstrap_certs.sh
+bash bootstrap_certs.sh local
 ```
+
+**Cloud mode** — parties on two remote machines. Run on your **local workstation**,
+which acts as a throwaway certificate authority and provisions both machines over `scp` (DEV ONLY!):
+
+```bash
+bash bootstrap_certs.sh cloud root@<receiver-ip> root@<sender-ip>
+```
+
+Get `<party-ip>` by running `hostname -I`.
+
+Each machine receives only its own key pair plus the CA certificate; the receiver's
+certificate embeds the receiver's IP (taken from `<receiver-ip>`, so pass the real IP,
+not an SSH-config alias). See the script reference below for details and security
+caveats — this flow is for development and benchmarking only.
 
 ### 3. Generate input sets
 

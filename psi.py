@@ -50,8 +50,12 @@ def _check_frontend():
         )
 
 
-def _check_certs():
-    missing = [str(v) for v in CERTS.values() if not v.exists()]
+def _check_certs(*roles):
+    """Check only the certs the given role(s) actually need."""
+    needed = [CERTS["ca"]]
+    for role in roles:
+        needed += [CERTS[f"{role}_cert"], CERTS[f"{role}_key"]]
+    missing = [str(p) for p in needed if not p.exists()]
     if missing:
         sys.exit(
             "TLS certificates missing:\n  " + "\n  ".join(missing) + "\n"
@@ -78,7 +82,7 @@ def _generate_inputs(n, intersection, outdir, seed=42):
 def cmd_bench(args):
     _check_frontend()
     if args.tls:
-        _check_certs()
+        _check_certs("receiver", "sender")
 
     outdir = Path(args.outdir)
     set_size = 1 << args.n
@@ -137,7 +141,7 @@ def cmd_bench(args):
 def cmd_receiver(args):
     _check_frontend()
     if args.tls:
-        _check_certs()
+        _check_certs("receiver")
 
     out_file = str(args.out) if args.out else str(args.input) + ".out"
     cmd = [
@@ -161,7 +165,7 @@ def cmd_receiver(args):
 def cmd_sender(args):
     _check_frontend()
     if args.tls:
-        _check_certs()
+        _check_certs("sender")
 
     cmd = [
         str(FRONTEND), "-r", "0",
